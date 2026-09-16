@@ -40,14 +40,27 @@
       <thead>
         <tr><th>Device ID</th><th>Status</th><th>Action</th></tr>
       </thead>
-      <tbody>
+            <tbody>
         {% for d in devices %}
         <tr>
-          <td>{{ d }}</td>
-          <td><span class="muted">active</span></td>
+          <td>{{ d.id }}</td>
+          <td>
+            {% if d.revoked %}
+              <span style="color:#f87171;font-weight:600">revoked</span>
+            {% else %}
+              <span class="muted">active</span>
+            {% endif %}
+          </td>
           <td>
             {% if is_admin %}
-              <button class="revoke" disabled title="Wired up in Phase 3c">Revoke</button>
+              {% if d.revoked %}
+                <span class="muted">—</span>
+              {% else %}
+                <form method="post" action="/revoke/{{ d.id }}" style="margin:0"
+                      onsubmit="return confirm('Revoke {{ d.id }}? It will be locked out of the broker.');">
+                  <button class="revoke" type="submit">Revoke</button>
+                </form>
+              {% endif %}
             {% else %}
               <span class="muted">view-only</span>
             {% endif %}

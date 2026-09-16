@@ -6,6 +6,8 @@ admins and gets wired to the real mechanism in Phase 3c.
 """
 import os
 import sys
+import subprocess
+import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
@@ -29,7 +31,21 @@ if not SECRET_KEY or "change-me" in SECRET_KEY:
 # Certs live here; in 3c we'll list device certs from this directory.
 CERT_DIR = ROOT / "certs" / "out"
 
+# Prefer Git Bash explicitly. shutil.which("bash") can resolve to the WSL
+# relay on Windows, which fails if WSL isn't installed — so check known
+# Git Bash locations first and only fall back to PATH as a last resort.
+_BASH_CANDIDATES = [
+    r"C:\Program Files\Git\usr\bin\bash.exe",
+    r"C:\Program Files\Git\bin\bash.exe",
+    r"C:\Program Files (x86)\Git\usr\bin\bash.exe",
+]
+BASH_PATH = next((p for p in _BASH_CANDIDATES if Path(p).exists()),
+                 shutil.which("bash") or _BASH_CANDIDATES[0])
+REVOKE_SCRIPT = ROOT / "certs" / "revoke_device.sh"
+
 app = FastAPI(title="Secure IoT — Admin")
+# Tracks revoked device ids for UI display (source of truth is the CRL itself).
+_REVOKED: set[str] = set()
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, https_only=False)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -121,16 +137,92 @@ def logout(request: Request):
 def devices(request: Request):
     user = require_login(request)
     audit("view_devices", actor=user["username"], outcome="success")
+    device_rows = [
+        {"id": d, "revoked": d in _REVOKED} for d in list_device_ids()
+    ]
     return templates.TemplateResponse(
         request,
         "devices.html",
         {
             "user": user,
-            "devices": list_device_ids(),
+            "devices": device_rows,
             "is_admin": user["role"] == ROLE_ADMIN,
         },
     )
 
+def _is_in_crl(device_id: str) -> bool:
+    """Return True only if this device's cert serial appears in the CRL.
+    This is the source of truth — we never trust a script exit code alone."""
+    cert = CERT_DIR / f"{device_id}.crt"
+    crl = CERT_DIR / "crl.pem"
+    if not cert.exists() or not crl.exists():
+        return False
+    openssl = shutil.which("openssl") or r"C:\Program Files\Git\usr\bin\openssl.exe"
+    try:
+        serial = subprocess.run(
+            [openssl, "x509", "-in", str(cert), "-noout", "-serial"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip().split("=")[-1].upper()
+        crl_text = subprocess.run(
+            [openssl, "crl", "-in", str(crl), "-noout", "-text"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.upper()
+        return serial in crl_text
+    except Exception:
+        return False
+
+@app.post("/revoke/{device_id}")
+def revoke_device(device_id: str, request: Request):
+    user = require_admin(request)  # admin-only; audits forbidden attempts
+
+    if not device_id.replace("-", "").replace("_", "").isalnum():
+        audit("revoke_device", actor=user["username"], target=device_id,
+              outcome="failure", detail="invalid device id")
+        raise HTTPException(status_code=400, detail="invalid device id")
+
+    cert = CERT_DIR / f"{device_id}.crt"
+    if not cert.exists():
+        audit("revoke_device", actor=user["username"], target=device_id,
+              outcome="failure", detail="unknown device")
+        raise HTTPException(status_code=404, detail="unknown device")
+
+    # 1. Run the revoke script.
+    script_posix = "/" + str(REVOKE_SCRIPT).replace("\\", "/").replace(":", "", 1)
+    result = subprocess.run(
+        [BASH_PATH, "-lc", f'"{script_posix}" "{device_id}"'],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        combined = (result.stdout + "\n" + result.stderr).strip()
+        audit("revoke_device", actor=user["username"], target=device_id,
+              outcome="failure", detail=combined[:300])
+        raise HTTPException(status_code=500, detail=f"revoke failed: {combined[:500]}")
+
+    # 2. VERIFY the CRL actually contains this device's serial before trusting it.
+    if not _is_in_crl(device_id):
+        audit("revoke_device", actor=user["username"], target=device_id,
+              outcome="failure", detail="script exited 0 but device not in CRL")
+        raise HTTPException(status_code=500,
+                            detail="revoke reported success but CRL does not list the device")
+
+    # 3. Restart the broker so it reloads the CRL and drops connections.
+    docker_exe = shutil.which("docker") or "docker"
+    restart = subprocess.run(
+        [docker_exe, "compose", "restart", "broker"],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=90,
+    )
+    if restart.returncode != 0:
+        detail = (restart.stdout + "\n" + restart.stderr).strip()[:400]
+        audit("revoke_device", actor=user["username"], target=device_id,
+              outcome="failure", detail=f"CRL updated but broker restart failed: {detail}")
+        raise HTTPException(status_code=500,
+                            detail=f"Certificate revoked but broker restart failed: {detail}")
+
+    # 4. Only now is it truly revoked and enforced.
+    _REVOKED.add(device_id)
+    audit("revoke_device", actor=user["username"], target=device_id,
+          outcome="success", detail="certificate revoked; CRL verified; broker reloaded")
+    return RedirectResponse("/devices", status_code=302)
 
 # Redirect unauthenticated users to the login page instead of a raw 401.
 @app.exception_handler(HTTPException)
