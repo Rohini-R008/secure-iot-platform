@@ -6,6 +6,10 @@ services:
       - "8883:8883"
     volumes:
       - ./broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./broker/acl:/mosquitto/config/acl:ro
+      - ./broker/acl:/mosquitto/config/acl.src:ro
       - ./certs/out:/mosquitto/config/certs:ro
-    restart: unless-stopped
+    entrypoint: >
+      sh -c "cp /mosquitto/config/acl.src /mosquitto/config/acl &&
+             chown mosquitto:mosquitto /mosquitto/config/acl &&
+             chmod 0700 /mosquitto/config/acl &&
+             exec /docker-entrypoint.sh /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf"
