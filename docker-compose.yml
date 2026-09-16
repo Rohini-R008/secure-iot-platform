@@ -31,5 +31,24 @@ services:
       - influxdb-data:/var/lib/influxdb2
     restart: unless-stopped
 
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: iot-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      INFLUXDB_ORG: ${INFLUXDB_ORG}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      GRAFANA_INFLUX_TOKEN: ${GRAFANA_INFLUX_TOKEN}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - influxdb
+    restart: unless-stopped
+
 volumes:
   influxdb-data:
+  grafana-data:
