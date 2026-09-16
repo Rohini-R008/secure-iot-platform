@@ -15,7 +15,7 @@ passwords anywhere in the system.
 ## Status
 - [x] Phase 1 — Broker & Identity Broker & Identity (verified: valid publish succeeds, anonymous refused, cross-device publish blocked by ACL)
 - [x] Phase 2 — Processing & Storage (validation, anomaly flagging, rejection audit log, InfluxDB)
-- [x] Phase 3 — Access Control & Observability (RBAC, audit logging, CRL revocation, Grafana dashboard)
+- [x] Phase 3 — Access Control & Observability (RBAC, audit logging, CRL revocation, provisioned Grafana dashboard)
 - [ ] Phase 4 — Threat Model & Insecure/Secure Demo
 
 ## Quick start (Phase 1)
