@@ -14,3 +14,6 @@ certs/out/
 .env
 .vscode/
 .DS_Store
+
+# InfluxDB / processor
+processor/logs/

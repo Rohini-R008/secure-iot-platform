@@ -1,5 +1,9 @@
-# Each authenticated device may read/write ONLY its own topic subtree.
-# %u expands to the username, which (via use_identity_as_username) is the
-# certificate CN — i.e. the device id. So sensor-001 is confined to
-# devices/sensor-001/#, and cannot touch devices/sensor-002/#.
+# Devices: each may read/write ONLY its own subtree.
+# %u expands to the certificate CN (the device id), so sensor-001 is
+# confined to devices/sensor-001/# and cannot touch another device's topics.
 pattern readwrite devices/%u/#
+
+# Processor: read-only access across the whole fleet, so it can ingest
+# telemetry from every device but cannot publish or impersonate anyone.
+user processor
+topic read devices/#
