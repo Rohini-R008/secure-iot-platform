@@ -1,0 +1,5 @@
+# Each authenticated device may read/write ONLY its own topic subtree.
+# %u expands to the username, which (via use_identity_as_username) is the
+# certificate CN — i.e. the device id. So sensor-001 is confined to
+# devices/sensor-001/#, and cannot touch devices/sensor-002/#.
+pattern readwrite devices/%u/#
