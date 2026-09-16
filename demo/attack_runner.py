@@ -86,13 +86,51 @@ def verdict(label, insecure_res, secure_res, success_means_published=True):
     return good
 
 
+def try_publish_and_verify(pub_host, pub_port, sub_host, sub_port, topic,
+                           payload, use_tls, pub_cert=None, sub_cert=None,
+                           timeout=6):
+    """Publish, and independently SUBSCRIBE to confirm the message truly arrived.
+    Returns True only if the payload was actually received by a subscriber."""
+    received = {"got": False}
+
+    # Subscriber (the victim's own valid identity on the secure stack).
+    sub = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+    if use_tls:
+        if sub_cert:
+            sub.tls_set(ca_certs=str(CERT_DIR / "ca.crt"),
+                        certfile=str(CERT_DIR / f"{sub_cert}.crt"),
+                        keyfile=str(CERT_DIR / f"{sub_cert}.key"))
+        else:
+            sub.tls_set(ca_certs=str(CERT_DIR / "ca.crt"))
+
+    def on_msg(c, u, m):
+        if m.payload.decode(errors="replace") == payload:
+            received["got"] = True
+
+    sub.on_message = on_msg
+    try:
+        sub.connect(sub_host, sub_port, keepalive=10)
+        sub.subscribe(topic, qos=1)
+        sub.loop_start()
+        time.sleep(1.0)  # let subscription establish
+    except Exception:
+        pass  # if the victim can't even subscribe, treat as not-received
+
+    # Publisher (the attacker).
+    res = try_publish(pub_host, pub_port, topic, payload, use_tls, pub_cert)
+    time.sleep(1.5)  # allow delivery if it were permitted
+
+    sub.loop_stop()
+    sub.disconnect()
+    return received["got"], res
+
+
 def main():
     print("Secure IoT — Side-by-side attack demonstration")
     print("=" * 50)
-
     results = []
 
-    # ATTACK 1: Anonymous / no-credential publish (spoofed sensor, no identity)
+    # ATTACK 1: Anonymous / no-credential publish
     ins = try_publish(INSECURE_HOST, INSECURE_PORT,
                       "devices/sensor-001/telemetry", "anon-attack",
                       use_tls=False)
@@ -101,26 +139,34 @@ def main():
                       use_tls=True, cert_name=None)
     results.append(verdict("Attack 1: Anonymous publish (no credentials)", ins, sec))
 
-    # ATTACK 2: Cross-device spoofing — a valid device writing to another's topic
-    # On insecure there is no identity at all, so 'attacker' writes sensor-002.
-    ins = try_publish(INSECURE_HOST, INSECURE_PORT,
-                      "devices/sensor-002/telemetry", "spoof-002",
-                      use_tls=False)
-    # On secure, sensor-001's cert tries to publish to sensor-002's topic (ACL should block).
-    sec = try_publish(SECURE_HOST, SECURE_PORT,
-                      "devices/sensor-002/telemetry", "spoof-002",
-                      use_tls=True, cert_name="sensor-001")
-    # Note: secure connects fine (valid cert) but ACL blocks the publish to
-    # another device's topic. QoS1 publish to a denied topic won't confirm.
-    results.append(verdict("Attack 2: Cross-device spoofing (ACL bypass attempt)",
-                           ins, sec))
+    # ATTACK 2: Cross-device spoofing — verified by whether the message ARRIVES.
+    # Insecure: attacker publishes to sensor-002's topic, a subscriber gets it.
+    ins_got, _ = try_publish_and_verify(
+        INSECURE_HOST, INSECURE_PORT, INSECURE_HOST, INSECURE_PORT,
+        "devices/sensor-002/telemetry", "spoof-002-insecure",
+        use_tls=False)
+    # Secure: sensor-001 tries to publish to sensor-002's topic; sensor-002
+    # subscribes to its own topic. ACL should stop the message arriving.
+    sec_got, _ = try_publish_and_verify(
+        SECURE_HOST, SECURE_PORT, SECURE_HOST, SECURE_PORT,
+        "devices/sensor-002/telemetry", "spoof-002-secure",
+        use_tls=True, pub_cert="sensor-001", sub_cert="sensor-002")
+
+    print(f"\n{YELLOW}== Attack 2: Cross-device spoofing (ACL bypass attempt) =={RESET}")
+    print(f"  INSECURE (1883): message {'DELIVERED' if ins_got else 'not delivered'}"
+          f" to victim topic")
+    print(f"  SECURE   (8883): message {'DELIVERED (!!)' if sec_got else 'BLOCKED'}"
+          f" by ACL")
+    good2 = ins_got and not sec_got
+    print(f"  RESULT: {(GREEN+'PASS'+RESET) if good2 else (RED+'CHECK'+RESET)}"
+          f" — spoof lands on insecure, blocked on secure")
+    results.append(good2)
 
     print("\n" + "=" * 50)
-    passed = sum(results)
+    passed = sum(1 for r in results if r)
     print(f"Summary: {passed}/{len(results)} attacks correctly blocked on the "
           f"secure stack while succeeding on the insecure stack.")
-    print("Full threat model in README. Revocation + validation demos run "
-          "separately (see demo script).")
+    print("Revocation + validation demos run separately (see demo script).")
 
 
 if __name__ == "__main__":
