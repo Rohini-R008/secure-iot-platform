@@ -13,7 +13,7 @@ restricts each device to its own topic subtree. There are no shared
 passwords anywhere in the system.
 
 ## Status
-- [x] Phase 1 — Broker & Identity
+- [x] Phase 1 — Broker & Identity Broker & Identity (verified: valid publish succeeds, anonymous refused, cross-device publish blocked by ACL)
 - [ ] Phase 2 — Processing & Storage
 - [ ] Phase 3 — Access Control & Observability
 - [ ] Phase 4 — Threat Model & Insecure/Secure Demo
