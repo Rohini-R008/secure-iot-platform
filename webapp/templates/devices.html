@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Secure IoT — Devices</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; }
+    header { display:flex; justify-content:space-between; align-items:center;
+             padding:1rem 1.5rem; background:#1e293b; }
+    header .who { font-size:.85rem; color:#94a3b8; }
+    .role { display:inline-block; padding:.1rem .5rem; border-radius:6px; font-size:.7rem;
+            font-weight:700; text-transform:uppercase; margin-left:.4rem; }
+    .role.admin { background:#7c3aed; color:white; }
+    .role.operator { background:#0891b2; color:white; }
+    a.logout { color:#93c5fd; text-decoration:none; font-size:.85rem; }
+    main { padding:1.5rem; max-width:800px; margin:0 auto; }
+    table { width:100%; border-collapse:collapse; background:#1e293b; border-radius:10px;
+            overflow:hidden; }
+    th, td { text-align:left; padding:.75rem 1rem; border-bottom:1px solid #334155; }
+    th { font-size:.75rem; text-transform:uppercase; color:#94a3b8; }
+    .revoke { background:#dc2626; color:white; border:0; padding:.4rem .8rem; border-radius:6px;
+              cursor:pointer; font-size:.8rem; }
+    .revoke:hover { background:#b91c1c; }
+    .muted { color:#64748b; font-size:.8rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>Secure IoT Monitoring</strong></div>
+    <div class="who">
+      {{ user.username }}
+      <span class="role {{ user.role }}">{{ user.role }}</span>
+      &nbsp;|&nbsp; <a class="logout" href="/logout">Log out</a>
+    </div>
+  </header>
+  <main>
+    <h2>Devices</h2>
+    <table>
+      <thead>
+        <tr><th>Device ID</th><th>Status</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        {% for d in devices %}
+        <tr>
+          <td>{{ d }}</td>
+          <td><span class="muted">active</span></td>
+          <td>
+            {% if is_admin %}
+              <button class="revoke" disabled title="Wired up in Phase 3c">Revoke</button>
+            {% else %}
+              <span class="muted">view-only</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not is_admin %}
+      <p class="muted" style="margin-top:1rem">You are signed in as operator (view-only). Revocation requires an admin.</p>
+    {% endif %}
+  </main>
+</body>
+</html>
