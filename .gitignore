@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets & certificates — NEVER commit these
+certs/out/
+*.key
+*.pem
+*.srl
+
+# Env / editor / OS
+.env
+.vscode/
+.DS_Store
