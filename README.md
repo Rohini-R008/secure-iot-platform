@@ -90,7 +90,7 @@ removed. `demo/attack_runner.py` runs each attack against both stacks:
 Summary: 2/2 attacks blocked on secure, succeed on insecure.
 ```
 
-> Demo video: _[add link once recorded]_
+> Demo video: https://youtu.be/o3JpkNYN8gE
 
 ## Tech stack
 Mosquitto (MQTT broker) · Python (paho-mqtt, FastAPI) · InfluxDB (time-series +
